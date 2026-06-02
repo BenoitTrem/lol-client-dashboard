@@ -21,6 +21,21 @@ A fan-made open-source desktop application for interacting with the League of Le
 
 ## Getting Started
 
+## Download
+
+> Downloads the **installer** (`.exe`) — no coding required, just run and play.
+
+<a href="https://github.com/BenoitTrem/lol-client-dashboard/releases/download/V1.0.0/LoL.Dashboard.Setup.1.0.0.exe">
+  <img src="https://img.shields.io/badge/Download%20for%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"/>
+</a>
+
+> Or browse all releases on the [Releases page](https://github.com/BenoitTrem/lol-client-dashboard/releases).
+
+---
+
+## For Developers
+
+Want to run or contribute to the project locally? Follow the steps below.
 ### Prerequisites
 
 - Node.js
