@@ -1,4 +1,4 @@
-# LCU Dashboard
+# League of Legends Client API Dashboard
 
 A fan-made open-source desktop application for interacting with the League of Legends client via the LCU API. Built with **Next.js** and **Electron**.
 
