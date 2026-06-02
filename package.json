@@ -5,7 +5,7 @@
   "private": true,
   "build": {
     "appId": "com.yourname.lcu-dashboard",
-    "productName": "LoL_Dashboard",
+    "productName": "LoL Dashboard",
     "forceCodeSigning": false,
     "files": [
       "electron/**/*",
@@ -15,7 +15,10 @@
     ],
     "win": {
       "icon": "resources/icon.ico",
-      "target": "nsis"
+      "target": [
+        "nsis",
+        "dir"
+      ]
     }
   },
   "scripts": {
