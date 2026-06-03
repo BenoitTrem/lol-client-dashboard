@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   LogOut,
   AlertTriangle,
@@ -114,18 +114,6 @@ interface RankedStats {
   losses?: number;
 }
 
-const POPULAR_QUEUES: QueueOption[] = [
-  { id: 420, name: "Ranked Solo/Duo", shortName: "Ranked Solo" },
-  { id: 440, name: "Ranked Flex", shortName: "Ranked Flex" },
-  { id: 400, name: "Normal Draft Pick", shortName: "Draft Pick" },
-  { id: 490, name: "Swiftplay", shortName: "Swiftplay" },
-  { id: 450, name: "ARAM", shortName: "ARAM", isAram: true },
-  { id: 1020, name: "ARAM Mayhem", shortName: "ARAM Mayhem", isAram: true },
-  { id: 1700, name: "Arena", shortName: "Arena", isAram: true },
-];
-const DRAFT_QUEUES = new Set([400, 420, 440]);
-const ARAM_QUEUE_IDS = new Set([450, 1020, 1700]);
-const NO_LOBBY_QUEUES = new Set([490, 1020, 1700]);
 const LANES = ["Top", "Jungle", "Mid", "Bot", "Support", "Fill"] as const;
 type Lane = (typeof LANES)[number];
 const LANE_TO_POSITION: Record<Lane, string> = {
@@ -530,10 +518,21 @@ export default function Dashboard() {
   championsRef.current = champions;
   phaseRef.current = phase;
 
+  const [availableQueues, setAvailableQueues] = useState<QueueOption[]>([]);
+  const [unavailableQueues, setUnavailableQueues] = useState<QueueOption[]>([]);
   const [onlineFriends, setOnlineFriends] = useState<Friend[]>([]);
 
-  const supportsChampSelect = DRAFT_QUEUES.has(selectedQueue);
-  const isAram = ARAM_QUEUE_IDS.has(selectedQueue);
+  const draftQueueIds = useMemo(
+    () => new Set(availableQueues.filter((q) => !q.isAram).map((q) => q.id)),
+    [availableQueues],
+  );
+  const aramQueueIds = useMemo(
+    () => new Set(availableQueues.filter((q) => q.isAram).map((q) => q.id)),
+    [availableQueues],
+  );
+
+  const supportsChampSelect = draftQueueIds.has(selectedQueue);
+  const isAram = aramQueueIds.has(selectedQueue);
 
   const handleReload = async () => {
     if (!window.electronAPI?.reloadLCU) {
@@ -843,6 +842,10 @@ export default function Dashboard() {
       const lobby = await lcu("/lol-lobby/v2/lobby");
       if (lobby?.gameConfig) {
         setLobbyId("active");
+        const lobbyQueueId = lobby.gameConfig.queueId;
+        if (lobbyQueueId && lobbyQueueId > 0) {
+          setSelectedQueue(lobbyQueueId);
+        }
         const members: string[] = await Promise.all(
           (lobby.members ?? []).map(async (m: any) => {
             if (m.summonerName) return m.summonerName;
@@ -1005,31 +1008,8 @@ export default function Dashboard() {
   }, [summoner, fetchProfileData]);
 
   useEffect(() => {
-    const startPolling = async () => {
-      const ok = await checkConnection();
-      setInitializing(false);
-      if (ok) {
-        const loadedChampions = await fetchChampions();
-        await fetchSummoner(loadedChampions);
-        await fetchOnlineFriends();
-      }
-      pollingRef.current = setInterval(async () => {
-        const ok = await checkConnection();
-        if (ok) {
-          pollGameflow();
-          fetchOnlineFriends();
-        }
-      }, 2500);
-    };
-    startPolling();
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [checkConnection, fetchSummoner, fetchChampions, pollGameflow]);
-
-  useEffect(() => {
-    if (!DRAFT_QUEUES.has(selectedQueue)) setAutoChampSelect(false);
-  }, [selectedQueue]);
+    if (!draftQueueIds.has(selectedQueue)) setAutoChampSelect(false);
+  }, [selectedQueue, draftQueueIds]);
 
   useEffect(() => {
     if (!lobbyId) return;
@@ -1037,7 +1017,7 @@ export default function Dashboard() {
   }, [selectedQueue, lobbyId, syncLobbyState]);
 
   const applyLanes = async () => {
-    if (ARAM_QUEUE_IDS.has(selectedQueue) || (!lane1 && !lane2)) return;
+    if (aramQueueIds.has(selectedQueue) || (!lane1 && !lane2)) return;
     try {
       await lcu(
         "/lol-lobby/v2/lobby/members/localMember/position-preferences",
@@ -1086,23 +1066,151 @@ export default function Dashboard() {
     }
   };
 
+  const PREFERRED_QUEUE_ORDER = [420, 440, 400, 480, 450, 2400];
+
+  const fetchAvailableQueues = useCallback(async () => {
+    try {
+      const queues = await lcu("/lol-game-queues/v1/queues");
+      if (Array.isArray(queues)) {
+        console.log(
+          "[Queues] All queues:",
+          queues.map((q: any) => ({
+            id: q.id,
+            name: q.name,
+            availability: q.queueAvailability,
+            gameMode: q.gameMode,
+          })),
+        );
+
+        const ALWAYS_AVAILABLE_IDS = new Set([420, 440, 400, 450]);
+        const FORCE_UNAVAILABLE_IDS = new Set([
+          3270, 3140, 3200, 3220, 3210, 3230, 3120, 3100, 3110, 3130,
+        ]);
+        const seen = new Set<number>();
+        const allQueues = queues
+          .filter((q: any) => {
+            if (!q.name || q.name.trim() === "" || q.id <= 0) return false;
+            if (seen.has(q.id)) return false;
+            seen.add(q.id);
+            return true;
+          })
+          .map((q: any): QueueOption & { available: boolean } => {
+            let name = q.name;
+            let shortName = q.shortName ?? q.name;
+            if (q.id === 400) {
+              name = "Normal Draft Pick";
+              shortName = "Normal Draft";
+            }
+            if (q.id === 430) {
+              name = "Normal Blind Pick";
+              shortName = "Normal Blind";
+            }
+            if (q.id === 2400) {
+              name = "ARAM: Mayhem";
+              shortName = "ARAM: Mayhem";
+            }
+            if (q.id === 480) {
+              name = "Swiftplay";
+              shortName = "Swiftplay";
+            }
+
+            return {
+              id: q.id,
+              name,
+              shortName,
+              isAram: q.gameMode === "ARAM",
+              available:
+                !FORCE_UNAVAILABLE_IDS.has(q.id) &&
+                (ALWAYS_AVAILABLE_IDS.has(q.id) ||
+                  q.queueAvailability === "Available" ||
+                  q.queueAvailability === "PlatformAvailable"),
+            };
+          });
+
+        const seenNames = new Set<string>();
+        const available = allQueues
+          .filter((q) => q.available)
+          .sort((a, b) => {
+            const ai = PREFERRED_QUEUE_ORDER.indexOf(a.id);
+            const bi = PREFERRED_QUEUE_ORDER.indexOf(b.id);
+            if (ai !== -1 && bi !== -1) return ai - bi;
+            if (ai !== -1) return -1;
+            if (bi !== -1) return 1;
+            return a.name.localeCompare(b.name);
+          })
+          .filter((q) => {
+            if (seenNames.has(q.name)) return false;
+            seenNames.add(q.name);
+            return true;
+          });
+
+        const unavailable = allQueues
+          .filter((q) => !q.available)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        setAvailableQueues(available);
+        setSelectedQueue((prev) =>
+          available.find((q) => q.id === prev)
+            ? prev
+            : (available[0]?.id ?? 420),
+        );
+
+        setUnavailableQueues(unavailable);
+        addLog(`Loaded ${available.length} available queues`, "success");
+      }
+    } catch (e) {
+      addLog("Could not fetch queues from client", "warn");
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    const startPolling = async () => {
+      const ok = await checkConnection();
+      setInitializing(false);
+      if (ok) {
+        const loadedChampions = await fetchChampions();
+        await fetchSummoner(loadedChampions);
+        await fetchOnlineFriends();
+        await fetchAvailableQueues();
+      }
+      pollingRef.current = setInterval(async () => {
+        const ok = await checkConnection();
+        if (ok) {
+          pollGameflow();
+          fetchOnlineFriends();
+        }
+      }, 2500);
+    };
+    startPolling();
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [
+    checkConnection,
+    fetchSummoner,
+    fetchChampions,
+    pollGameflow,
+    fetchAvailableQueues,
+  ]);
+
   const handleCreateLobby = async () => {
     setLoad("lobby", true);
+    if (!availableQueues.find((q) => q.id === selectedQueue)) {
+      addLog("This mode is not currently available.", "warn");
+      showToast("This game mode is not currently available.", "warn");
+      setLoad("lobby", false);
+      return;
+    }
     try {
-      const body: any = { queueId: selectedQueue };
-      if (ARAM_QUEUE_IDS.has(selectedQueue) || selectedQueue === 490) {
-        body.customGameLobby = null;
-        body.isCustom = false;
-      }
       const data = await lcu("/lol-lobby/v2/lobby", "POST", {
         queueId: selectedQueue,
       });
       await new Promise((r) => setTimeout(r, 500));
       setLobbyId(data?.gameConfig?.queueId?.toString() ?? "created");
-      addLog(
-        `Lobby created: ${POPULAR_QUEUES.find((q) => q.id === selectedQueue)?.shortName ?? selectedQueue}`,
-        "success",
-      );
+      const qName =
+        availableQueues.find((q) => q.id === selectedQueue)?.shortName ??
+        selectedQueue;
+      addLog(`Lobby created: ${qName}`, "success");
     } catch (e: unknown) {
       const msg =
         e instanceof Error ? e.message : (JSON.stringify(e) ?? String(e));
@@ -1112,8 +1220,24 @@ export default function Dashboard() {
     }
   };
 
+  const handleChangeQueue = async (newQueueId: number) => {
+    try {
+      await lcu("/lol-lobby/v2/lobby", "POST", { queueId: newQueueId });
+      setSelectedQueue(newQueueId);
+      addLog(
+        `Queue changed: ${availableQueues.find((q) => q.id === newQueueId)?.shortName ?? newQueueId}`,
+        "success",
+      );
+      await syncLobbyState();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      addLog(`Change queue failed: ${msg}`, "error");
+      showToast(`Could not change queue: ${msg}`, "error");
+    }
+  };
+
   const handleStartQueue = async () => {
-    if (!isAram && DRAFT_QUEUES.has(selectedQueue)) {
+    if (!isAram && draftQueueIds.has(selectedQueue)) {
       const hasNone = !lane1 && !lane2,
         hasBoth = lane1 && lane2,
         isFillOnly = lane1 === "Fill" && !lane2;
@@ -1944,13 +2068,31 @@ export default function Dashboard() {
           </label>
           <select
             value={selectedQueue}
-            onChange={(e) => setSelectedQueue(Number(e.target.value))}
+            onChange={(e) => {
+              const newId = Number(e.target.value);
+              if (phase === "Lobby") {
+                handleChangeQueue(newId);
+              } else {
+                setSelectedQueue(newId);
+              }
+            }}
           >
-            {POPULAR_QUEUES.map((q) => (
-              <option key={q.id} value={q.id}>
-                {q.name}
-              </option>
-            ))}
+            <optgroup label="Available">
+              {availableQueues.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.name}
+                </option>
+              ))}
+            </optgroup>
+            {unavailableQueues.length > 0 && (
+              <optgroup label="Unavailable">
+                {unavailableQueues.map((q) => (
+                  <option key={q.id} value={q.id} disabled>
+                    {q.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           {lobbyMembers.length > 0 && (
             <div style={{ marginTop: 10 }}>
