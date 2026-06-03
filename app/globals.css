@@ -67,8 +67,8 @@ button {
   text-transform: uppercase;
   border: none;
   transition:
-    all 0.18s ease,
-    box-shadow 0.18s ease;
+    all 0.2s ease,
+    box-shadow 0.2s ease;
   position: relative;
   overflow: hidden;
 }
@@ -83,7 +83,7 @@ button::after {
     transparent 100%
   );
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transition: opacity 0.2s ease;
 }
 
 button:hover:not(:disabled)::after {
@@ -124,7 +124,7 @@ button:active:not(:disabled) {
   font-size: 14px;
   border-radius: 2px;
   border: 1px solid var(--gold-border);
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-gold:hover:not(:disabled) {
@@ -140,7 +140,7 @@ button:active:not(:disabled) {
   font-size: 14px;
   border-radius: 2px;
   border: 1px solid var(--blue-border);
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-blue:hover:not(:disabled) {
@@ -156,7 +156,7 @@ button:active:not(:disabled) {
   font-size: 14px;
   border-radius: 2px;
   border: 1px solid rgba(192, 57, 43, 0.4);
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 .btn-leave:hover:not(:disabled) {
   box-shadow:
@@ -172,7 +172,7 @@ button:active:not(:disabled) {
   font-size: 14px;
   border-radius: 2px;
   border: 1px solid rgba(192, 57, 43, 0.4);
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -185,7 +185,7 @@ button:active:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-icon svg {
@@ -198,12 +198,13 @@ select {
   color: var(--text-primary);
   border: 1px solid var(--blue-border);
   border-radius: 2px;
-  padding: 8px 12px;
+  padding: 8px 28px 8px 12px;
   font-size: 14px;
   font-family: "Rajdhani, sans-serif";
   margin-bottom: 16px;
   cursor: "pointer";
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
 }
 
 select:hover {
@@ -228,7 +229,7 @@ input {
   font-family: "Rajdhani, sans-serif";
   margin-bottom: 8px;
   cursor: "pointer";
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 
 input:hover {
@@ -251,7 +252,7 @@ input:focus {
   padding: 2px 8px;
   border: 1px solid var(--blue-border) !important;
   border-radius: 2px;
-  transition: all 0.5s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-clear:hover:not(:disabled) {
@@ -264,7 +265,17 @@ input:focus {
   display: none;
 }
 
+.btn-secondary:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: rgba(10, 200, 185, 0.55) !important;
+  background: rgba(10, 200, 185, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(10, 200, 185, 0.18),
+    0 0 10px rgba(10, 200, 185, 0.12);
+}
+
 .tag {
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -311,6 +322,26 @@ input:focus {
   color: var(--text-muted);
   padding: 3px 0;
   border-bottom: 1px solid rgba(30, 58, 95, 0.3);
+  border-left: 2px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease,
+    border-color 0.15s ease;
+}
+.log-entry:hover {
+  background: rgba(200, 155, 60, 0.06);
+  border-left: 2px solid rgba(200, 155, 60, 0.25);
+  transform: translateX(2px);
+}
+
+.log-entry span {
+  color: var(--text-muted);
+  margin-right: 8px;
+  transition: color 0.1s ease;
+}
+
+.log-entry:hover span {
+  color: var(--text-primary) !important;
 }
 
 .log-entry.success {
@@ -390,7 +421,7 @@ input:focus {
 }
 
 .ranked-panel {
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 .ranked-panel:hover {
   transform: translateY(-2px);
@@ -399,7 +430,7 @@ input:focus {
 }
 
 .mastery-panel {
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
 }
 .mastery-panel:hover {
   transform: translateY(-0.5px);
@@ -511,4 +542,155 @@ input:focus {
 .footer-link svg {
   display: block;
   margin-top: -3px;
+}
+
+.auto-accept-select {
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.auto-accept-select.enabled:hover {
+  border-color: rgba(39, 174, 96, 0.5) !important;
+  background: rgba(39, 174, 96, 0.12) !important;
+  box-shadow: 0 0 0 1px rgba(39, 174, 96, 0.15);
+}
+
+.auto-accept-select.disabled:hover {
+  border-color: rgba(200, 155, 60, 0.45) !important;
+  background: rgba(200, 155, 60, 0.04) !important;
+  box-shadow: 0 0 0 1px rgba(200, 155, 60, 0.1);
+}
+
+.on-off-container {
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.auto-accept-select.disabled .on-off-container:hover {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 1px rgba(200, 155, 60, 0.2);
+}
+
+.auto-accept-select.enabled .on-off-container:hover {
+  border-color: var(--green) !important;
+  background-color: rgba(39, 174, 96, 0.15) !important;
+  box-shadow: 0 0 6px rgba(39, 174, 96, 0.25);
+}
+
+.client-connected {
+  cursor: pointer;
+  transition:
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.tag:hover .client-connected.online {
+  box-shadow: 0 0 6px rgba(46, 204, 113, 0.8);
+}
+
+.tag:hover .client-connected.offline {
+  box-shadow: 0 0 6px rgba(231, 76, 60, 0.8);
+}
+.client-connected.online:hover {
+  box-shadow: 0 0 6px rgba(46, 204, 113, 0.8);
+}
+
+.client-connected.offline:hover {
+  box-shadow: 0 0 6px rgba(231, 76, 60, 0.8);
+}
+
+.tag {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.tag:hover.tag-online {
+  border-color: rgba(46, 204, 113, 0.6);
+  box-shadow: 0 0 0 1px rgba(46, 204, 113, 0.2);
+}
+
+.tag:hover.tag-offline {
+  border-color: rgba(231, 76, 60, 0.5);
+  box-shadow: 0 0 0 1px rgba(231, 76, 60, 0.15);
+}
+
+.state {
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.state:hover {
+  border-color: rgba(200, 155, 60, 0.4) !important;
+  box-shadow: 0 0 0 1px rgba(200, 155, 60, 0.15);
+}
+
+.select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.feature-card {
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  will-change: transform;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.35),
+    0 0 18px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.hover-panel {
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  will-change: transform;
+}
+
+.hover-panel:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 14px 35px rgba(0, 0, 0, 0.35),
+    0 0 18px rgba(200, 155, 60, 0.08);
+}
+
+.faq-card {
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  will-change: transform;
+}
+
+.faq-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(200, 155, 60, 0.08);
+}
+
+.ingame-icon {
+  transition: transform 0.5s ease;
+}
+
+.ingame-icon:hover {
+  transform: scale(1.05);
 }

@@ -12,7 +12,13 @@ import {
   Swords,
   Ban,
   UserCheck,
+  Shuffle,
+  HelpCircle,
 } from "lucide-react";
+
+import ChampSelectView from "./champ-select-view";
+import InGameView from "./in-game-view";
+import HelpPage from "./help-page";
 
 declare global {
   interface Window {
@@ -104,9 +110,15 @@ interface RankedQueue {
   losses: number;
   queueType?: string;
 }
+
 interface RankedStats {
   queues?: RankedQueue[];
-  queueMap?: { RANKED_SOLO_5x5?: RankedQueue; RANKED_FLEX_SR?: RankedQueue };
+  queueMap?: {
+    RANKED_SOLO_5x5?: RankedQueue;
+    RANKED_FLEX_SR?: RankedQueue;
+    RANKED_TFT?: RankedQueue;
+    RANKED_TFT_DOUBLE_UP?: RankedQueue;
+  };
   tier?: string;
   division?: string;
   leaguePoints?: number;
@@ -176,10 +188,11 @@ function ChampionSearch({
       : champions
           .filter(
             (c) =>
-              !excludeIds.includes(c.id) &&
+              !excludeIds.filter((id) => id !== -1).includes(c.id) &&
               c.name.toLowerCase().includes(query.toLowerCase()),
           )
           .slice(0, 8);
+
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node))
@@ -190,18 +203,19 @@ function ChampionSearch({
   }, []);
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      {selected && !open ? (
+      {(selected || value === -1) && !open ? (
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            background: "rgba(200,155,60,0.08)",
-            border: "1px solid rgba(200,155,60,0.35)",
+            background:
+              value === -1 ? "rgba(200,155,60,0.08)" : "rgba(200,155,60,0.08)",
+            border: `1px solid ${value === -1 ? "rgba(200,155,60,0.35)" : "rgba(200,155,60,0.35)"}`,
+            color: value === -1 ? "var(--gold-light)" : "var(--gold-light)",
             borderRadius: 2,
             padding: "6px 10px",
             fontSize: 13,
-            color: "var(--gold-light)",
             cursor: "pointer",
           }}
           onClick={() => {
@@ -209,7 +223,23 @@ function ChampionSearch({
             setQuery("");
           }}
         >
-          <span style={{ fontWeight: 600 }}>{selected.name}</span>
+          <span
+            style={{
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            {value === -1 ? (
+              <>
+                <Shuffle size={13} />
+                Random
+              </>
+            ) : (
+              selected?.name
+            )}
+          </span>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -256,6 +286,7 @@ function ChampionSearch({
           }}
         />
       )}
+
       {open && filtered.length > 0 && (
         <div
           style={{
@@ -271,6 +302,33 @@ function ChampionSearch({
             overflowY: "auto",
           }}
         >
+          <div
+            onMouseDown={() => {
+              onChange(-1, "Random");
+              setQuery("");
+              setOpen(false);
+            }}
+            style={{
+              padding: "6px 10px",
+              fontSize: 13,
+              cursor: "pointer",
+              color: "var(--gold-light)",
+              borderBottom: "1px solid rgba(30,58,95,0.4)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = "rgba(200,155,60,0.1)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
+          >
+            <Shuffle size={13} />
+            Random
+          </div>
           {filtered.map((c) => (
             <div
               key={c.id}
@@ -510,6 +568,7 @@ export default function Dashboard() {
   const requeueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const champSelectHandledRef = useRef<Set<number>>(new Set());
   const phaseRef = useRef(phase);
+  const [showHelp, setShowHelp] = useState(false);
   autoAcceptRef.current = autoAccept;
   autoAcceptDelayRef.current = autoAcceptDelay;
   banPicksRef.current = banPicks;
@@ -522,8 +581,15 @@ export default function Dashboard() {
   const [unavailableQueues, setUnavailableQueues] = useState<QueueOption[]>([]);
   const [onlineFriends, setOnlineFriends] = useState<Friend[]>([]);
 
+  const DRAFT_QUEUE_IDS = new Set([420, 440, 400, 480, 700, 1700, 1710]);
+
   const draftQueueIds = useMemo(
-    () => new Set(availableQueues.filter((q) => !q.isAram).map((q) => q.id)),
+    () =>
+      new Set(
+        availableQueues
+          .filter((q) => DRAFT_QUEUE_IDS.has(q.id))
+          .map((q) => q.id),
+      ),
     [availableQueues],
   );
   const aramQueueIds = useMemo(
@@ -531,8 +597,60 @@ export default function Dashboard() {
     [availableQueues],
   );
 
-  const supportsChampSelect = draftQueueIds.has(selectedQueue);
-  const isAram = aramQueueIds.has(selectedQueue);
+  const inLobby =
+    phase === "Lobby" ||
+    phase === "Matchmaking" ||
+    phase === "ChampSelect" ||
+    phase === "ReadyCheck";
+  const ARENA_QUEUE_IDS = new Set([1700, 1710]);
+  const isAram =
+    aramQueueIds.has(selectedQueue) ||
+    !!availableQueues
+      .find((q) => q.id === selectedQueue)
+      ?.name?.toLowerCase()
+      .includes("aram");
+
+  const isArena =
+    ARENA_QUEUE_IDS.has(selectedQueue) ||
+    !!availableQueues
+      .find((q) => q.id === selectedQueue)
+      ?.name?.toLowerCase()
+      .includes("arena");
+
+  const isTft = !!availableQueues
+    .find((q) => q.id === selectedQueue)
+    ?.name?.toLowerCase()
+    .includes("tft");
+
+  const isSwiftplay = selectedQueue === 480;
+
+  const FULL_CHAMP_SELECT_IDS = new Set([420, 440, 400, 700]);
+
+  const PICKS_AND_LANES_ONLY_IDS = new Set([480]);
+
+  const showBanPrefs =
+    inLobby &&
+    !isAram &&
+    !isTft &&
+    (FULL_CHAMP_SELECT_IDS.has(selectedQueue) || isArena);
+
+  const showPickPrefs =
+    inLobby &&
+    !isAram &&
+    !isTft &&
+    (FULL_CHAMP_SELECT_IDS.has(selectedQueue) ||
+      PICKS_AND_LANES_ONLY_IDS.has(selectedQueue) ||
+      isArena);
+
+  const showLanePrefs =
+    inLobby &&
+    !isAram &&
+    !isArena &&
+    !isTft &&
+    (FULL_CHAMP_SELECT_IDS.has(selectedQueue) ||
+      PICKS_AND_LANES_ONLY_IDS.has(selectedQueue));
+
+  const supportsChampSelect = showBanPrefs || showPickPrefs || showLanePrefs;
 
   const handleReload = async () => {
     if (!window.electronAPI?.reloadLCU) {
@@ -714,7 +832,7 @@ export default function Dashboard() {
         const sid = (data.summonerId || data.id) as number;
         summonerIdRef.current = sid;
         addLog(
-          `Logged in as: ${data.displayName} (Lvl ${data.summonerLevel})`,
+          `Logged in as: ${data.gameName} (Lvl ${data.summonerLevel})`,
           "success",
         );
         await fetchProfileData(
@@ -756,7 +874,7 @@ export default function Dashboard() {
               .filter((a) => a.type === "ban" && a.completed)
               .map((a) => a.championId);
             const bans = banPicksRef.current.filter(
-              (id): id is number => id !== null,
+              (id): id is number => id !== null && id !== -1,
             );
             let chosenId =
               bans.find((id) => !alreadyBanned.includes(id)) ?? null;
@@ -799,7 +917,7 @@ export default function Dashboard() {
               .map((m) => m.championId)
               .filter(Boolean);
             const picks = champPicksRef.current.filter(
-              (id): id is number => id !== null,
+              (id): id is number => id !== null && id !== -1,
             );
             let chosenId =
               picks.find((id) => !alreadyPicked.includes(id)) ?? null;
@@ -1018,6 +1136,10 @@ export default function Dashboard() {
 
   const applyLanes = async () => {
     if (aramQueueIds.has(selectedQueue) || (!lane1 && !lane2)) return;
+    addLog(
+      `Applying lane preferences: ${lane1 ?? "—"} / ${lane2 ?? "—"}`,
+      "info",
+    );
     try {
       await lcu(
         "/lol-lobby/v2/lobby/members/localMember/position-preferences",
@@ -1027,10 +1149,13 @@ export default function Dashboard() {
           secondPreference: lane2 ? LANE_TO_POSITION[lane2] : "UNSELECTED",
         },
       );
-      addLog(`Lanes set: ${lane1 ?? "—"} / ${lane2 ?? "—"}`, "info");
+      addLog(
+        `Lane preferences saved: ${lane1 ?? "—"} / ${lane2 ?? "—"}`,
+        "success",
+      );
     } catch (e: unknown) {
       addLog(
-        `Lane pref failed: ${e instanceof Error ? e.message : String(e)}`,
+        `Failed to save lane preferences: ${e instanceof Error ? e.message : String(e)}`,
         "warn",
       );
     }
@@ -1038,6 +1163,7 @@ export default function Dashboard() {
 
   const handleInviteFriend = async (friend: Friend) => {
     if (!lobbyId) {
+      addLog("Invite failed — not in a lobby", "warn");
       showToast(
         "You need to create a lobby first before inviting friends.",
         "warn",
@@ -1049,20 +1175,30 @@ export default function Dashboard() {
       busyStatuses.includes(friend.gameStatus ?? "") ||
       friend.availability === "dnd"
     ) {
+      const reason =
+        friend.gameStatus === "championSelect"
+          ? "in champion select"
+          : "currently in a game";
+      addLog(`Cannot invite ${friend.name} — they are ${reason}`, "warn");
       showToast(
-        `${friend.name} is currently ${friend.gameStatus === "championSelect" ? "in champ select" : "in a game"} and can't be invited.`,
+        `${friend.name} is ${reason} and can't be invited right now.`,
         "warn",
       );
       return;
     }
+    addLog(`Sending invite to ${friend.name}…`, "info");
     try {
       await lcu("/lol-lobby/v2/lobby/invitations", "POST", [
         { toSummonerId: friend.summonerId ?? friend.id },
       ]);
-      addLog(`Invited ${friend.name} to lobby`, "success");
+      addLog(`Invite sent to ${friend.name}`, "success");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      showToast(`Could not invite ${friend.name}: ${msg}`, "error");
+      addLog(`Failed to invite ${friend.name}: ${msg}`, "error");
+      showToast(
+        `Could not invite ${friend.name}. They may have invites disabled.`,
+        "error",
+      );
     }
   };
 
@@ -1196,43 +1332,51 @@ export default function Dashboard() {
   const handleCreateLobby = async () => {
     setLoad("lobby", true);
     if (!availableQueues.find((q) => q.id === selectedQueue)) {
-      addLog("This mode is not currently available.", "warn");
+      addLog("Cannot create lobby — queue not available", "warn");
       showToast("This game mode is not currently available.", "warn");
       setLoad("lobby", false);
       return;
     }
+    const qName =
+      availableQueues.find((q) => q.id === selectedQueue)?.shortName ??
+      selectedQueue;
+    addLog(`Creating lobby for ${qName}…`, "info");
     try {
       const data = await lcu("/lol-lobby/v2/lobby", "POST", {
         queueId: selectedQueue,
       });
       await new Promise((r) => setTimeout(r, 500));
       setLobbyId(data?.gameConfig?.queueId?.toString() ?? "created");
-      const qName =
-        availableQueues.find((q) => q.id === selectedQueue)?.shortName ??
-        selectedQueue;
       addLog(`Lobby created: ${qName}`, "success");
     } catch (e: unknown) {
       const msg =
         e instanceof Error ? e.message : (JSON.stringify(e) ?? String(e));
-      addLog(`Create lobby failed: ${msg}`, "error");
+      addLog(`Failed to create lobby: ${msg}`, "error");
+      showToast(`Could not create lobby. Is the client ready?`, "error");
     } finally {
       setLoad("lobby", false);
     }
   };
 
   const handleChangeQueue = async (newQueueId: number) => {
+    const qName =
+      availableQueues.find((q) => q.id === newQueueId)?.shortName ?? newQueueId;
+    addLog(`Switching queue to ${qName}…`, "info");
     try {
       await lcu("/lol-lobby/v2/lobby", "POST", { queueId: newQueueId });
       setSelectedQueue(newQueueId);
-      addLog(
-        `Queue changed: ${availableQueues.find((q) => q.id === newQueueId)?.shortName ?? newQueueId}`,
-        "success",
-      );
+      addLog(`Queue changed to ${qName}`, "success");
+      await new Promise((r) => setTimeout(r, 500));
       await syncLobbyState();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      addLog(`Change queue failed: ${msg}`, "error");
-      showToast(`Could not change queue: ${msg}`, "error");
+      addLog(`Failed to switch queue: ${msg}`, "error");
+      showToast(
+        `Could not switch to ${qName}. Try leaving and recreating the lobby.`,
+        "error",
+      );
+      setLobbyId(null);
+      setLobbyMembers([]);
     }
   };
 
@@ -1242,22 +1386,24 @@ export default function Dashboard() {
         hasBoth = lane1 && lane2,
         isFillOnly = lane1 === "Fill" && !lane2;
       if (!hasNone && !hasBoth && !isFillOnly) {
+        addLog("Queue blocked — invalid lane selection", "warn");
         showToast(
           "Lane preference incomplete — pick Fill, both lanes, or leave both empty.",
+          "warn",
         );
         return;
       }
     }
     setLoad("queue", true);
+    addLog("Starting matchmaking search…", "info");
     try {
       await applyLanes();
       await lcu("/lol-lobby/v2/lobby/matchmaking/search", "POST");
-      addLog("Queue search started!", "success");
+      addLog("In queue — searching for a match", "success");
     } catch (e: unknown) {
-      addLog(
-        `Start queue failed: ${e instanceof Error ? e.message : String(e)}`,
-        "error",
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      addLog(`Failed to start queue: ${msg}`, "error");
+      showToast("Could not start queue. Make sure you're in a lobby.", "error");
     } finally {
       setLoad("queue", false);
     }
@@ -1265,14 +1411,14 @@ export default function Dashboard() {
 
   const handleStopQueue = async () => {
     setLoad("stopqueue", true);
+    addLog("Leaving queue…", "info");
     try {
       await lcu("/lol-lobby/v2/lobby/matchmaking/search", "DELETE");
-      addLog("Queue search cancelled.", "warn");
+      addLog("Left queue — back in lobby", "warn");
     } catch (e: unknown) {
-      addLog(
-        `Stop queue failed: ${e instanceof Error ? e.message : String(e)}`,
-        "error",
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      addLog(`Failed to leave queue: ${msg}`, "error");
+      showToast("Could not leave queue. Try reloading.", "error");
     } finally {
       setLoad("stopqueue", false);
     }
@@ -1282,10 +1428,12 @@ export default function Dashboard() {
     setLoad("accept", true);
     try {
       await lcu("/lol-matchmaking/v1/ready-check/accept", "POST");
-      addLog("Match accepted!", "success");
+      addLog("Match accepted — entering champion select", "success");
     } catch (e: unknown) {
-      addLog(
-        `Accept failed: ${e instanceof Error ? e.message : String(e)}`,
+      const msg = e instanceof Error ? e.message : String(e);
+      addLog(`Failed to accept match: ${msg}`, "error");
+      showToast(
+        "Could not accept — the ready check may have expired.",
         "error",
       );
     } finally {
@@ -1297,10 +1445,12 @@ export default function Dashboard() {
     setLoad("decline", true);
     try {
       await lcu("/lol-matchmaking/v1/ready-check/decline", "POST");
-      addLog("Match declined.", "warn");
+      addLog("Match declined — returning to lobby", "warn");
     } catch (e: unknown) {
-      addLog(
-        `Decline failed: ${e instanceof Error ? e.message : String(e)}`,
+      const msg = e instanceof Error ? e.message : String(e);
+      addLog(`Failed to decline match: ${msg}`, "error");
+      showToast(
+        "Could not decline — the ready check may have already closed.",
         "error",
       );
     } finally {
@@ -1310,7 +1460,11 @@ export default function Dashboard() {
 
   function extractRankedQueue(
     stats: RankedStats | null,
-    queueType: "RANKED_SOLO_5x5" | "RANKED_FLEX_SR",
+    queueType:
+      | "RANKED_SOLO_5x5"
+      | "RANKED_FLEX_SR"
+      | "RANKED_TFT"
+      | "RANKED_TFT_DOUBLE_UP",
   ): RankedQueue | null {
     if (!stats) return null;
     if (Array.isArray(stats.queues)) {
@@ -1335,15 +1489,15 @@ export default function Dashboard() {
 
   const handleLeaveLobby = async () => {
     setLoad("leave", true);
+    addLog("Leaving lobby…", "info");
     try {
       await lcu("/lol-lobby/v2/lobby", "DELETE");
       setLobbyId(null);
-      addLog("Left lobby.", "warn");
+      addLog("Left lobby successfully", "warn");
     } catch (e: unknown) {
-      addLog(
-        `Leave lobby failed: ${e instanceof Error ? e.message : String(e)}`,
-        "error",
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      addLog(`Failed to leave lobby: ${msg}`, "error");
+      showToast("Could not leave lobby. Try reloading the client.", "error");
     } finally {
       setLoad("leave", false);
     }
@@ -1367,11 +1521,19 @@ export default function Dashboard() {
   const allPickIds = champPicks.filter((id): id is number => id !== null);
   const soloQueue = extractRankedQueue(rankedStats, "RANKED_SOLO_5x5");
   const flexQueue = extractRankedQueue(rankedStats, "RANKED_FLEX_SR");
+  const tftQueue = extractRankedQueue(rankedStats, "RANKED_TFT");
+  const tftDoubleUpQueue = extractRankedQueue(
+    rankedStats,
+    "RANKED_TFT_DOUBLE_UP",
+  );
   const allModesTotal = allModesWins + allModesLosses;
   const allModesWR =
     allModesTotal > 0 ? Math.round((allModesWins / allModesTotal) * 100) : 0;
 
   if (initializing) {
+    if (showHelp) {
+      return <HelpPage onBack={() => setShowHelp(false)} />;
+    }
     return (
       <div
         style={{
@@ -1388,6 +1550,9 @@ export default function Dashboard() {
   }
 
   if (!connected) {
+    if (showHelp) {
+      return <HelpPage onBack={() => setShowHelp(false)} />;
+    }
     return (
       <div
         style={{
@@ -1427,6 +1592,7 @@ export default function Dashboard() {
             <div style={{ marginBottom: 16 }}>
               <span className="tag tag-offline" style={{ fontSize: 13 }}>
                 <span
+                  className="client-connected offline"
                   style={{
                     width: 7,
                     height: 7,
@@ -1478,7 +1644,9 @@ export default function Dashboard() {
       </div>
     );
   }
-
+  if (showHelp) {
+    return <HelpPage onBack={() => setShowHelp(false)} />;
+  }
   return (
     <div
       style={{
@@ -1524,6 +1692,7 @@ export default function Dashboard() {
           style={{ justifySelf: "start" }}
         >
           <span
+            className={`client-connected ${connected ? "online" : "offline"}`}
             style={{
               width: 7,
               height: 7,
@@ -1559,882 +1728,556 @@ export default function Dashboard() {
           </span>
         </div>
 
-        <button
-          className="btn-clear"
-          onClick={() => window.location.reload()}
+        <div
           style={{
             justifySelf: "end",
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-            padding: "4px 10px",
+            gap: 8,
           }}
         >
-          <RefreshCw size={13} />
-          Reload
-        </button>
-      </div>
-
-      {summoner && (
-        <div className="panel" style={{ padding: 20, marginBottom: 16 }}>
-          <div
+          <button
+            className="btn-clear"
+            onClick={() => setShowHelp(true)}
+            title="Help & Guide"
             style={{
               display: "flex",
-              gap: 20,
-              alignItems: "flex-start",
-              flexWrap: "nowrap",
-              overflow: "visible",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 12,
+              padding: "4px 10px",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                flexShrink: 0,
-                minWidth: 335,
-                gap: 10,
-                overflow: "visible",
-              }}
-            >
-              {iconUrl ? (
-                <img
-                  src={iconUrl}
-                  alt="icon"
-                  width={100}
-                  height={100}
-                  style={{
-                    borderRadius: 4,
-                    border: "2px solid var(--gold)",
-                    flexShrink: 0,
-                  }}
-                  className="profile-icon"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: 4,
-                    border: "2px solid var(--blue-border)",
-                    background: "rgba(255,255,255,0.04)",
-                    flexShrink: 0,
-                  }}
-                />
-              )}
+            <HelpCircle size={15} />
+          </button>
+          <button
+            className="btn-clear"
+            onClick={() => window.location.reload()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              padding: "4px 10px",
+            }}
+          >
+            <RefreshCw size={13} />
+            Reload
+          </button>
+        </div>
+      </div>
 
-              <div style={{ width: "100%", textAlign: "left" }}>
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: "var(--gold)",
-                    fontFamily: "Cinzel, serif",
-                    marginBottom: 4,
-                  }}
-                >
-                  {summoner.displayName ||
-                    (summoner.gameName
-                      ? `${summoner.gameName} #${summoner.tagLine}`
-                      : "Unknown")}
-                </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    marginBottom: 6,
-                  }}
-                >
-                  Level{" "}
-                  <strong style={{ color: "var(--text-primary)" }}>
-                    {summoner.summonerLevel}
-                  </strong>
-                </div>
-              </div>
-
-              {allModesTotal > 0 &&
-                (() => {
-                  const radius = 22;
-                  const circ = 2 * Math.PI * radius;
-                  const winArc = (allModesWins / allModesTotal) * circ;
-                  return (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        marginTop: 8,
-                      }}
-                    >
-                      <svg width={52} height={52} style={{ flexShrink: 0 }}>
-                        <circle
-                          cx={26}
-                          cy={26}
-                          r={radius}
-                          fill="none"
-                          stroke="#e74c3c"
-                          strokeWidth={6}
-                          opacity={0.3}
-                        />
-                        <circle
-                          cx={26}
-                          cy={26}
-                          r={radius}
-                          fill="none"
-                          stroke="#3498db"
-                          strokeWidth={6}
-                          strokeDasharray={`${winArc} ${circ}`}
-                          strokeLinecap="round"
-                          transform="rotate(-90 26 26)"
-                        />
-                        <text
-                          x={26}
-                          y={30}
-                          textAnchor="middle"
-                          fontSize={12}
-                          fontWeight={700}
-                          fill={allModesWR >= 50 ? "#3498db" : "#e74c3c"}
-                          fontFamily="Rajdhani, sans-serif"
-                        >
-                          {allModesWR}%
-                        </text>
-                      </svg>
-                      <div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            color: "var(--text-muted)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.08em",
-                            marginBottom: 2,
-                          }}
-                        >
-                          All Modes
-                        </div>
-                        <div
-                          style={{ fontSize: 13, color: "var(--text-muted)" }}
-                        >
-                          <span style={{ color: "#3498db", fontWeight: 600 }}>
-                            {allModesWins}W
-                          </span>
-                          {" · "}
-                          <span style={{ color: "#e74c3c", fontWeight: 600 }}>
-                            {allModesLosses}L
-                          </span>
-                          {" · "}
-                          <span style={{ color: "var(--text-primary)" }}>
-                            {allModesTotal} games
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-            </div>
-
-            <div
-              style={{
-                width: 1,
-                background: "var(--blue-border)",
-                alignSelf: "stretch",
-                flexShrink: 0,
-              }}
-            />
-
-            <div style={{ flex: "2 1 0", minWidth: 0 }}>
+      {phase === "ChampSelect" ? (
+        <ChampSelectView
+          champions={champions}
+          isAram={isAram}
+          isDraft={draftQueueIds.has(selectedQueue)}
+          queueName={
+            availableQueues.find((q) => q.id === selectedQueue)?.name ??
+            "Champion Select"
+          }
+          localSummonerId={summonerIdRef.current}
+        />
+      ) : phase === "InProgress" || phase === "WaitingForStats" ? (
+        <InGameView
+          champions={champions}
+          localSummonerId={summonerIdRef.current}
+        />
+      ) : (
+        <>
+          {summoner && (
+            <div className="panel" style={{ padding: 20, marginBottom: 16 }}>
               <div
                 style={{
-                  fontSize: 14,
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  marginBottom: 10,
+                  display: "flex",
+                  gap: 20,
+                  alignItems: "flex-start",
+                  flexWrap: "nowrap",
+                  overflow: "visible",
                 }}
               >
-                Ranked
-              </div>
-              {(
-                [
-                  ["Solo/Duo", soloQueue],
-                  ["Flex", flexQueue],
-                ] as [string, RankedQueue | null][]
-              ).map(([label, q]) => {
-                const wins = q?.wins ?? 0;
-                const losses = q?.losses ?? 0;
-                const total = wins + losses;
-                const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
-                const radius = 18;
-                const circ = 2 * Math.PI * radius;
-                const winArc = total > 0 ? (wins / total) * circ : 0;
-                const tier = q?.tier && q.tier !== "" ? q.tier : "UNRANKED";
-                const tierIconUrl = `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/${tier.toLowerCase()}.png`;
-
-                return (
-                  <div
-                    key={label}
-                    className="panel ranked-panel"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 8,
-                      padding: "8px 10px",
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid var(--blue-border)",
-                      borderRadius: 3,
-                    }}
-                  >
-                    <svg width={44} height={44} style={{ flexShrink: 0 }}>
-                      <circle
-                        cx={22}
-                        cy={22}
-                        r={radius}
-                        fill="none"
-                        stroke="#e74c3c"
-                        strokeWidth={5}
-                        opacity={0.35}
-                      />
-                      <circle
-                        cx={22}
-                        cy={22}
-                        r={radius}
-                        fill="none"
-                        stroke="#3498db"
-                        strokeWidth={5}
-                        strokeDasharray={`${winArc} ${circ}`}
-                        strokeLinecap="round"
-                        transform="rotate(-90 22 22)"
-                        opacity={total > 0 ? 1 : 0.2}
-                      />
-                      <text
-                        x={22}
-                        y={26}
-                        textAnchor="middle"
-                        fontSize={10}
-                        fontWeight={700}
-                        fill={wr >= 50 ? "#3498db" : "#e74c3c"}
-                        fontFamily="Rajdhani, sans-serif"
-                      >
-                        {wr}%
-                      </text>
-                    </svg>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "var(--text-muted)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          marginBottom: 2,
-                        }}
-                      >
-                        {label}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                        <span style={{ color: "#3498db", fontWeight: 600 }}>
-                          {wins}W
-                        </span>
-                        {" · "}
-                        <span style={{ color: "#e74c3c", fontWeight: 600 }}>
-                          {losses}L
-                        </span>
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 3,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <img
-                        src={tierIconUrl}
-                        alt={tier}
-                        width={40}
-                        height={40}
-                        style={{ objectFit: "contain" }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: TIER_COLOR[tier] ?? "var(--text-muted)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                          textAlign: "center",
-                        }}
-                      >
-                        {tier === "UNRANKED"
-                          ? "Unranked"
-                          : `${tier} ${q?.division ?? ""}`}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <>
-              <div
-                style={{
-                  width: 1,
-                  background: "var(--blue-border)",
-                  alignSelf: "stretch",
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ flex: "1 1 0", minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: 10,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    flexShrink: 0,
+                    minWidth: 335,
+                    gap: 10,
+                    overflow: "visible",
                   }}
                 >
-                  Top Champions
-                </div>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 3 }}
-                >
-                  {topMastery.length === 0 ? (
+                  {iconUrl ? (
+                    <img
+                      src={iconUrl}
+                      alt="icon"
+                      width={100}
+                      height={100}
+                      style={{
+                        borderRadius: 4,
+                        border: "2px solid var(--gold)",
+                        flexShrink: 0,
+                      }}
+                      className="profile-icon"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
                     <div
                       style={{
-                        fontSize: 12,
-                        color: "var(--text-muted)",
-                        fontStyle: "italic",
+                        width: 72,
+                        height: 72,
+                        borderRadius: 4,
+                        border: "2px solid var(--blue-border)",
+                        background: "rgba(255,255,255,0.04)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+
+                  <div style={{ width: "100%", textAlign: "left" }}>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 700,
+                        color: "var(--gold)",
+                        fontFamily: "Cinzel, serif",
+                        marginBottom: 4,
                       }}
                     >
-                      No mastery data available
+                      {summoner.displayName ||
+                        (summoner.gameName
+                          ? `${summoner.gameName} #${summoner.tagLine}`
+                          : "Unknown")}
                     </div>
-                  ) : (
-                    topMastery.map((m, i) => {
-                      const champ = championsRef.current.find(
-                        (c) => c.id === m.championId,
-                      );
-                      const pts =
-                        m.championPoints >= 1000
-                          ? `${(m.championPoints / 1000).toFixed(0)}k`
-                          : String(m.championPoints);
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: "var(--text-muted)",
+                        marginBottom: 6,
+                      }}
+                    >
+                      Level{" "}
+                      <strong style={{ color: "var(--text-primary)" }}>
+                        {summoner.summonerLevel}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {allModesTotal > 0 &&
+                    (() => {
+                      const radius = 22;
+                      const circ = 2 * Math.PI * radius;
+                      const winArc = (allModesWins / allModesTotal) * circ;
                       return (
                         <div
-                          key={m.championId}
-                          className="panel mastery-panel"
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 8,
-                            padding: "7px 10px",
+                            gap: 10,
+                            marginTop: 8,
+                          }}
+                        >
+                          <svg width={52} height={52} style={{ flexShrink: 0 }}>
+                            <circle
+                              cx={26}
+                              cy={26}
+                              r={radius}
+                              fill="none"
+                              stroke="#e74c3c"
+                              strokeWidth={6}
+                              opacity={0.3}
+                            />
+                            <circle
+                              cx={26}
+                              cy={26}
+                              r={radius}
+                              fill="none"
+                              stroke="#3498db"
+                              strokeWidth={6}
+                              strokeDasharray={`${winArc} ${circ}`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 26 26)"
+                            />
+                            <text
+                              x={26}
+                              y={30}
+                              textAnchor="middle"
+                              fontSize={12}
+                              fontWeight={700}
+                              fill={allModesWR >= 50 ? "#3498db" : "#e74c3c"}
+                              fontFamily="Rajdhani, sans-serif"
+                            >
+                              {allModesWR}%
+                            </text>
+                          </svg>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 14,
+                                color: "var(--text-muted)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                marginBottom: 2,
+                              }}
+                            >
+                              All Modes
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              <span
+                                style={{ color: "#3498db", fontWeight: 600 }}
+                              >
+                                {allModesWins}W
+                              </span>
+                              {" · "}
+                              <span
+                                style={{ color: "#e74c3c", fontWeight: 600 }}
+                              >
+                                {allModesLosses}L
+                              </span>
+                              {" · "}
+                              <span style={{ color: "var(--text-primary)" }}>
+                                {allModesTotal} games
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                </div>
+
+                <div
+                  style={{
+                    width: 1,
+                    background: "var(--blue-border)",
+                    alignSelf: "stretch",
+                    flexShrink: 0,
+                  }}
+                />
+
+                <div style={{ flex: "2 1 0", minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                      marginBottom: 10,
+                    }}
+                  >
+                    Ranked
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 12,
+                    }}
+                  >
+                    {(
+                      [
+                        ["Solo/Duo", soloQueue],
+                        ["Flex", flexQueue],
+                        ["TFT", tftQueue],
+                        ["TFT Double Up", tftDoubleUpQueue],
+                      ] as [string, RankedQueue | null][]
+                    ).map(([label, q]) => {
+                      const wins = q?.wins ?? 0;
+                      const losses = q?.losses ?? 0;
+                      const total = wins + losses;
+                      const wr =
+                        total > 0 ? Math.round((wins / total) * 100) : 0;
+                      const radius = 23;
+                      const circ = 2 * Math.PI * radius;
+                      const winArc = total > 0 ? (wins / total) * circ : 0;
+                      const tier =
+                        q?.tier && q.tier !== "" ? q.tier : "UNRANKED";
+                      const tierIconUrl = `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/${tier.toLowerCase()}.png`;
+
+                      return (
+                        <div
+                          key={label}
+                          className="panel ranked-panel"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "12px 10px",
                             background: "rgba(255,255,255,0.02)",
                             border: "1px solid var(--blue-border)",
                             borderRadius: 3,
                           }}
                         >
-                          <span
+                          <svg width={56} height={56} style={{ flexShrink: 0 }}>
+                            <circle
+                              cx={28}
+                              cy={28}
+                              r={radius}
+                              fill="none"
+                              stroke="#e74c3c"
+                              strokeWidth={5}
+                              opacity={0.35}
+                            />
+                            <circle
+                              cx={28}
+                              cy={28}
+                              r={radius}
+                              fill="none"
+                              stroke="#3498db"
+                              strokeWidth={5}
+                              strokeDasharray={`${winArc} ${circ}`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 22 22)"
+                              opacity={total > 0 ? 1 : 0.2}
+                            />
+                            <text
+                              x={28}
+                              y={32}
+                              textAnchor="middle"
+                              fontSize={10}
+                              fontWeight={700}
+                              fill={wr >= 50 ? "#3498db" : "#e74c3c"}
+                              fontFamily="Rajdhani, sans-serif"
+                            >
+                              {wr}%
+                            </text>
+                          </svg>
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "var(--text-muted)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
+                                marginBottom: 2,
+                              }}
+                            >
+                              {label}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              <span
+                                style={{ color: "#3498db", fontWeight: 600 }}
+                              >
+                                {wins}W
+                              </span>
+                              {" · "}
+                              <span
+                                style={{ color: "#e74c3c", fontWeight: 600 }}
+                              >
+                                {losses}L
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
                             style={{
-                              fontSize: 14,
-                              color: "var(--text-muted)",
-                              width: 14,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 3,
                               flexShrink: 0,
                             }}
                           >
-                            #{i + 1}
-                          </span>
-                          <img
-                            src={`https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${m.championAlias ?? champ?.alias ?? m.championId}.png`}
-                            alt={champ?.name}
-                            width={24}
-                            height={24}
-                            style={{ borderRadius: 2, flexShrink: 0 }}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display =
-                                "none";
-                            }}
-                          />
-                          <span
-                            style={{
-                              fontSize: 12,
-                              color: "var(--text-primary)",
-                              fontWeight: 600,
-                              flex: 1,
-                            }}
-                          >
-                            {m.championName ?? `Champion ${m.championId}`}
-                          </span>
-                          <span
-                            style={{ fontSize: 14, color: "var(--text-muted)" }}
-                          >
-                            Lvl {m.championLevel}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 14,
-                              color: "var(--gold)",
-                              marginLeft: 4,
-                            }}
-                          >
-                            {pts}
-                          </span>
+                            <img
+                              src={tierIconUrl}
+                              alt={tier}
+                              width={40}
+                              height={40}
+                              style={{ objectFit: "contain" }}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display =
+                                  "none";
+                              }}
+                            />
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: TIER_COLOR[tier] ?? "var(--text-muted)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                                textAlign: "center",
+                              }}
+                            >
+                              {tier === "UNRANKED"
+                                ? "Unranked"
+                                : `${tier} ${q?.division ?? ""}`}
+                            </span>
+                          </div>
                         </div>
                       );
-                    })
-                  )}
+                    })}
+                  </div>
                 </div>
-              </div>
-            </>
-          </div>
-        </div>
-      )}
-
-      <div
-        className="panel"
-        style={{
-          padding: "22px 20px",
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 14,
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            marginBottom: 12,
-          }}
-        >
-          Friends Online ({onlineFriends.length})
-        </div>
-
-        {onlineFriends.length > 0 ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {onlineFriends.map((friend) => (
-              <FriendCard
-                key={friend.name}
-                friend={friend}
-                lobbyId={lobbyId}
-                onInvite={handleInviteFriend}
-              />
-            ))}
-          </div>
-        ) : (
-          <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
-            No friends online
-          </div>
-        )}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-          marginBottom: 16,
-        }}
-      >
-        <div className="panel" style={{ padding: 20 }}>
-          <h3
-            style={{
-              fontSize: 14,
-              color: "var(--gold)",
-              marginBottom: 16,
-              letterSpacing: "0.1em",
-            }}
-          >
-            Queue Setup
-          </h3>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "var(--text-muted)",
-              marginBottom: 6,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-            }}
-          >
-            Queue Type
-          </label>
-          <select
-            value={selectedQueue}
-            onChange={(e) => {
-              const newId = Number(e.target.value);
-              if (phase === "Lobby") {
-                handleChangeQueue(newId);
-              } else {
-                setSelectedQueue(newId);
-              }
-            }}
-          >
-            <optgroup label="Available">
-              {availableQueues.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.name}
-                </option>
-              ))}
-            </optgroup>
-            {unavailableQueues.length > 0 && (
-              <optgroup label="Unavailable">
-                {unavailableQueues.map((q) => (
-                  <option key={q.id} value={q.id} disabled>
-                    {q.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-          {lobbyMembers.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  marginBottom: 6,
-                }}
-              >
-                Lobby ({lobbyMembers.length})
-              </div>
-              {lobbyMembers.map((name, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 0",
-                    fontSize: 12,
-                    color: "var(--text-primary)",
-                    borderBottom: "1px solid rgba(255,255,255,0.04)",
-                  }}
-                >
-                  <span
+                <>
+                  <div
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: i === 0 ? "var(--gold)" : "#2ecc71",
+                      width: 1,
+                      background: "var(--blue-border)",
+                      alignSelf: "stretch",
                       flexShrink: 0,
                     }}
                   />
-                  {name}
-                  {i === 0 && (
-                    <span
+                  <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                    <div
                       style={{
-                        fontSize: 10,
-                        color: "var(--gold-dark)",
-                        marginLeft: 4,
+                        fontSize: 14,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        marginBottom: 10,
                       }}
                     >
-                      (you)
-                    </span>
-                  )}
-                </div>
-              ))}
+                      Top Champions
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 3,
+                      }}
+                    >
+                      {topMastery.length === 0 ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-muted)",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          No mastery data available
+                        </div>
+                      ) : (
+                        topMastery.map((m, i) => {
+                          const champ = championsRef.current.find(
+                            (c) => c.id === m.championId,
+                          );
+                          const pts =
+                            m.championPoints >= 1000
+                              ? `${(m.championPoints / 1000).toFixed(0)}k`
+                              : String(m.championPoints);
+                          return (
+                            <div
+                              key={m.championId}
+                              className="panel mastery-panel"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "7px 10px",
+                                background: "rgba(255,255,255,0.02)",
+                                border: "1px solid var(--blue-border)",
+                                borderRadius: 3,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  color: "var(--text-muted)",
+                                  width: 14,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                #{i + 1}
+                              </span>
+                              <img
+                                src={`https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${m.championAlias ?? champ?.alias ?? m.championId}.png`}
+                                alt={champ?.name}
+                                width={24}
+                                height={24}
+                                style={{ borderRadius: 2, flexShrink: 0 }}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: "var(--text-primary)",
+                                  fontWeight: 600,
+                                  flex: 1,
+                                }}
+                              >
+                                {m.championName ?? `Champion ${m.championId}`}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  color: "var(--text-muted)",
+                                }}
+                              >
+                                Lvl {m.championLevel}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  color: "var(--gold)",
+                                  marginLeft: 4,
+                                }}
+                              >
+                                {pts}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              </div>
             </div>
           )}
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-              marginTop: 15,
-            }}
-          >
-            {phase === "None" && (
-              <button
-                className="btn-gold btn-icon"
-                onClick={handleCreateLobby}
-                disabled={!connected || loading.lobby}
-                style={{ flex: 1 }}
-              >
-                {loading.lobby ? (
-                  <span className="spinner" />
-                ) : (
-                  <>
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                    >
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    Create Lobby
-                  </>
-                )}
-              </button>
-            )}
-            {(phase === "Lobby" || phase === "Matchmaking") && (
-              <button
-                className="btn-leave btn-icon"
-                onClick={handleLeaveLobby}
-                disabled={loading.leave}
-                style={{ flex: 1 }}
-              >
-                {loading.leave ? (
-                  <span className="spinner" />
-                ) : (
-                  <>
-                    <LogOut size={13} />
-                    Leave Lobby
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-          {(phase === "Lobby" || phase === "Matchmaking") && (
-            <>
-              <div className="divider" />
-              {phase === "Matchmaking" ? (
-                <button
-                  className="btn-danger btn-icon"
-                  onClick={handleStopQueue}
-                  disabled={!connected || loading.stopqueue}
-                  style={{ width: "100%", maxWidth: "none" }}
-                >
-                  {loading.stopqueue ? (
-                    <span className="spinner" />
-                  ) : (
-                    <>
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                      </svg>
-                      Leave Queue
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  className="btn-blue btn-icon"
-                  onClick={handleStartQueue}
-                  disabled={!connected || loading.queue}
-                  style={{ width: "100%", maxWidth: "none" }}
-                >
-                  {loading.queue ? (
-                    <span className="spinner" />
-                  ) : (
-                    <>
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                      </svg>
-                      Start Queue
-                    </>
-                  )}
-                </button>
-              )}
-            </>
-          )}
-        </div>
 
-        <div className="panel" style={{ padding: 20 }}>
-          <h3
-            style={{
-              fontSize: 14,
-              color: "var(--gold)",
-              marginBottom: 16,
-              letterSpacing: "0.1em",
-            }}
-          >
-            Auto-Accept
-          </h3>
           <div
+            className="panel"
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "12px 16px",
-              background: autoAccept
-                ? "rgba(39,174,96,0.08)"
-                : "rgba(255,255,255,0.03)",
-              border: `1px solid ${autoAccept ? "rgba(39,174,96,0.3)" : "var(--blue-border)"}`,
-              borderRadius: 3,
+              padding: "22px 20px",
               marginBottom: 16,
-              cursor: "pointer",
-              transition: "all 0.2s",
             }}
-            onClick={() =>
-              setAutoAccept((p) => {
-                addLog(
-                  !p ? "Auto-accept ENABLED" : "Auto-accept DISABLED",
-                  !p ? "success" : "warn",
-                );
-                return !p;
-              })
-            }
           >
-            <span
+            <div
               style={{
                 fontSize: 14,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              Auto-Accept
-            </span>
-            <div
-              style={{
-                width: 44,
-                height: 22,
-                borderRadius: 11,
-                background: autoAccept
-                  ? "var(--green)"
-                  : "rgba(255,255,255,0.1)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                position: "relative",
-                transition: "all 0.2s",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 3,
-                  left: autoAccept ? 23 : 3,
-                  width: 14,
-                  height: 14,
-                  borderRadius: "50%",
-                  background: "white",
-                  transition: "left 0.2s",
-                }}
-              />
-            </div>
-          </div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "var(--text-muted)",
-              marginBottom: 6,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-            }}
-          >
-            Accept Delay: {autoAcceptDelay}s
-          </label>
-          <input
-            type="range"
-            min={0}
-            max={10}
-            value={autoAcceptDelay}
-            onChange={(e) => setAutoAcceptDelay(Number(e.target.value))}
-            style={{
-              width: "100%",
-              accentColor: "var(--gold)",
-              marginBottom: 16,
-            }}
-          />
-          {readyCheck && (
-            <>
-              <div className="divider" />
-              <div
-                style={{
-                  padding: "10px 14px",
-                  background: "rgba(231,76,60,0.1)",
-                  border: "1px solid rgba(231,76,60,0.3)",
-                  borderRadius: 3,
-                  marginBottom: 12,
-                  animation: "pulse-glow 1.5s ease-in-out infinite",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#e74c3c",
-                    marginBottom: 4,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                  }}
-                >
-                  <Swords size={13} />
-                  Match Found!
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Timer: {Math.round(readyCheck.timer)}s · Response:{" "}
-                  {readyCheck.playerResponse}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="btn-gold btn-icon"
-                  onClick={handleAcceptNow}
-                  disabled={loading.accept}
-                  style={{ flex: 1 }}
-                >
-                  {loading.accept ? (
-                    <span className="spinner" />
-                  ) : (
-                    <>
-                      <Check size={14} strokeWidth={2.5} />
-                      Accept
-                    </>
-                  )}
-                </button>
-                <button
-                  className="btn-danger btn-icon"
-                  onClick={handleDecline}
-                  disabled={loading.decline}
-                >
-                  {loading.decline ? (
-                    <span className="spinner" />
-                  ) : (
-                    <>
-                      <X size={14} strokeWidth={2.5} />
-                      Decline
-                    </>
-                  )}
-                </button>
-              </div>
-            </>
-          )}
-          {autoAccept && !readyCheck && (
-            <div
-              style={{
-                fontSize: 12,
                 color: "var(--text-muted)",
-                textAlign: "center",
-                padding: "8px 0",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                marginBottom: 12,
               }}
             >
-              <span className="spinner" style={{ marginRight: 8 }} />
-              Watching for match popup…
+              Friends Online ({onlineFriends.length})
             </div>
-          )}
-        </div>
-      </div>
 
-      {supportsChampSelect && (
-        <>
+            {onlineFriends.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {onlineFriends.map((friend) => (
+                  <FriendCard
+                    key={friend.name}
+                    friend={friend}
+                    lobbyId={lobbyId}
+                    onInvite={handleInviteFriend}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                No friends online
+              </div>
+            )}
+          </div>
+
           <div
             style={{
               display: "grid",
@@ -2444,440 +2287,259 @@ export default function Dashboard() {
             }}
           >
             <div className="panel" style={{ padding: 20 }}>
+              <h3
+                style={{
+                  fontSize: 14,
+                  color: "var(--gold)",
+                  marginBottom: 16,
+                  letterSpacing: "0.1em",
+                }}
+              >
+                Queue Setup
+              </h3>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                Queue Type
+              </label>
+              <div className="select-wrapper">
+                <select
+                  value={selectedQueue}
+                  onChange={(e) => {
+                    const newId = Number(e.target.value);
+                    if (phase === "Lobby" && lobbyId) {
+                      handleChangeQueue(newId);
+                    } else {
+                      setSelectedQueue(newId);
+                    }
+                  }}
+                >
+                  <optgroup label="Available">
+                    {availableQueues.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {unavailableQueues.length > 0 && (
+                    <optgroup label="Unavailable">
+                      {unavailableQueues.map((q) => (
+                        <option key={q.id} value={q.id} disabled>
+                          {q.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              {lobbyMembers.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Lobby ({lobbyMembers.length})
+                  </div>
+                  {lobbyMembers.map((name, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 0",
+                        fontSize: 12,
+                        color: "var(--text-primary)",
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: i === 0 ? "var(--gold)" : "#2ecc71",
+                          flexShrink: 0,
+                        }}
+                      />
+                      {name}
+                      {i === 0 && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--gold-dark)",
+                            marginLeft: 4,
+                          }}
+                        >
+                          (you)
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 16,
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginTop: 15,
                 }}
               >
-                <h3
-                  style={{
-                    fontSize: 14,
-                    color: "var(--gold)",
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  Ban Preferences
-                </h3>
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                  }}
-                >
-                  In Order
-                </span>
-              </div>
-              {[0, 1, 2].map((i) => (
-                <div key={i} style={{ marginBottom: 8 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: 8,
-                    }}
+                {phase === "None" && (
+                  <button
+                    className="btn-gold btn-icon"
+                    onClick={handleCreateLobby}
+                    disabled={!connected || loading.lobby}
+                    style={{ flex: 1 }}
                   >
-                    <span
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        background:
-                          banPicks[i] !== null
-                            ? "rgba(192,57,43,0.3)"
-                            : "rgba(255,255,255,0.05)",
-                        border: `1px solid ${banPicks[i] !== null ? "rgba(192,57,43,0.5)" : "var(--blue-border)"}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 11,
-                        color:
-                          banPicks[i] !== null
-                            ? "#e74c3c"
-                            : "var(--text-muted)",
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
+                    {loading.lobby ? (
+                      <span className="spinner" />
+                    ) : (
+                      <>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                        >
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                        Create Lobby
+                      </>
+                    )}
+                  </button>
+                )}
+                {(phase === "Lobby" || phase === "Matchmaking") && (
+                  <button
+                    className="btn-leave btn-icon"
+                    onClick={handleLeaveLobby}
+                    disabled={loading.leave}
+                    style={{ flex: 1 }}
+                  >
+                    {loading.leave ? (
+                      <span className="spinner" />
+                    ) : (
+                      <>
+                        <LogOut size={13} />
+                        Leave Lobby
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              {(phase === "Lobby" || phase === "Matchmaking") && (
+                <>
+                  <div className="divider" />
+                  {phase === "Matchmaking" ? (
+                    <button
+                      className="btn-danger btn-icon"
+                      onClick={handleStopQueue}
+                      disabled={!connected || loading.stopqueue}
+                      style={{ width: "100%", maxWidth: "none" }}
                     >
-                      {i + 1}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 14,
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                      }}
+                      {loading.stopqueue ? (
+                        <span className="spinner" />
+                      ) : (
+                        <>
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                          >
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                          </svg>
+                          Leave Queue
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn-blue btn-icon"
+                      onClick={handleStartQueue}
+                      disabled={!connected || loading.queue}
+                      style={{ width: "100%", maxWidth: "none" }}
                     >
-                      {i === 0
-                        ? "First Ban"
-                        : i === 1
-                          ? "Second Ban"
-                          : "Third Ban"}
-                    </span>
-                  </div>
-                  <ChampionSearch
-                    value={banPicks[i]}
-                    onChange={(id, name) => {
-                      setBanPicks((p) => {
-                        const n = [...p];
-                        n[i] = id;
-                        return n;
-                      });
-                      setBanNames((p) => {
-                        const n = [...p];
-                        n[i] = name;
-                        return n;
-                      });
-                    }}
-                    placeholder={`Ban ${i + 1} — type champion name…`}
-                    champions={champions}
-                    excludeIds={allBanIds.filter((_, idx) => idx !== i)}
-                  />
-                </div>
-              ))}
+                      {loading.queue ? (
+                        <span className="spinner" />
+                      ) : (
+                        <>
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                          >
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
+                          Start Queue
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="panel" style={{ padding: 20 }}>
-              <div
+              <h3
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  fontSize: 14,
+                  color: "var(--gold)",
                   marginBottom: 16,
+                  letterSpacing: "0.1em",
                 }}
               >
-                <h3
-                  style={{
-                    fontSize: 14,
-                    color: "var(--gold)",
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  Pick Preferences
-                </h3>
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                  }}
-                >
-                  In Order
-                </span>
-              </div>
-
-              {[0, 1, 2].map((i) => (
-                <div key={i} style={{ marginBottom: 8 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        background:
-                          champPicks[i] !== null
-                            ? "rgba(39,174,96,0.2)"
-                            : "rgba(255,255,255,0.05)",
-                        border: `1px solid ${champPicks[i] !== null ? "rgba(39,174,96,0.5)" : "var(--blue-border)"}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 11,
-                        color:
-                          champPicks[i] !== null
-                            ? "#2ecc71"
-                            : "var(--text-muted)",
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {i + 1}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 14,
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                      }}
-                    >
-                      {i === 0
-                        ? "Main Pick"
-                        : i === 1
-                          ? "Second Pick"
-                          : "Third Pick"}
-                    </span>
-                  </div>
-                  <ChampionSearch
-                    value={champPicks[i]}
-                    onChange={(id, name) => {
-                      setChampPicks((p) => {
-                        const n = [...p];
-                        n[i] = id;
-                        return n;
-                      });
-                      setChampNames((p) => {
-                        const n = [...p];
-                        n[i] = name;
-                        return n;
-                      });
-                    }}
-                    placeholder={`Pick ${i + 1} — type champion name…`}
-                    champions={champions}
-                    excludeIds={allPickIds.filter((_, idx) => idx !== i)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {!isAram && (
-            <div className="panel" style={{ padding: 20, marginBottom: 16 }}>
+                Auto-Accept Match
+              </h3>
               <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 16,
-                }}
-              >
-                <h3
-                  style={{
-                    fontSize: 14,
-                    color: "var(--gold)",
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  Lane Preferences
-                </h3>
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "var(--text-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                  }}
-                >
-                  Primary · Secondary
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  justifyContent: "center",
-                  marginTop: 22,
-                }}
-              >
-                {LANES.map((lane) => {
-                  const isPrimary = lane1 === lane,
-                    isSecondary = lane2 === lane;
-                  return (
-                    <button
-                      key={lane}
-                      className="btn-clear"
-                      onClick={() => {
-                        if (isPrimary) {
-                          setLane1(null);
-                          setLane2(null);
-                        } else if (isSecondary) {
-                          setLane2(null);
-                        } else if (!lane1) {
-                          setLane1(lane);
-                        } else if (
-                          !lane2 &&
-                          lane !== lane1 &&
-                          lane1 !== "Fill"
-                        ) {
-                          setLane2(lane);
-                        }
-                      }}
-                      style={{
-                        background: isPrimary
-                          ? "linear-gradient(180deg,#c89b3c 0%,#785a28 100%)"
-                          : isSecondary
-                            ? "rgba(10,200,185,0.15)"
-                            : "rgba(255,255,255,0.04)",
-                        border: isPrimary
-                          ? "1px solid var(--gold)"
-                          : isSecondary
-                            ? "1px solid rgba(10,200,185,0.5)"
-                            : "1px solid var(--blue-border)",
-                        borderRadius: 3,
-                        padding: "10px 18px",
-                        color: isPrimary
-                          ? "var(--blue-dark)"
-                          : isSecondary
-                            ? "var(--blue-glow)"
-                            : "var(--text-muted)",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                        cursor: "pointer",
-                        transition: "all 0.2s",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        maxWidth: 120,
-                        width: "100%",
-                        gap: 6,
-                      }}
-                    >
-                      {lane}
-                      {isPrimary && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            background: "rgba(0,0,0,0.25)",
-                            borderRadius: 2,
-                            padding: "1px 5px",
-                          }}
-                        >
-                          1st
-                        </span>
-                      )}
-                      {isSecondary && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            background: "rgba(10,200,185,0.2)",
-                            borderRadius: 2,
-                            padding: "1px 5px",
-                          }}
-                        >
-                          2nd
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              {(lane1 || lane2) && (
-                <div
-                  style={{
-                    marginTop: 24,
-                    fontSize: 12,
-                    color: "var(--text-muted)",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  {lane1 && (
-                    <span
-                      style={{
-                        color: "var(--gold)",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      Primary: <strong>{lane1}</strong>
-                    </span>
-                  )}
-                  {lane2 && (
-                    <span
-                      style={{
-                        color: "var(--blue-glow)",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      Secondary: <strong>{lane2}</strong>
-                    </span>
-                  )}
-                  <button
-                    className="btn-clear"
-                    onClick={() => {
-                      setLane1(null);
-                      setLane2(null);
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-              <p
                 style={{
                   fontSize: 14,
                   color: "var(--text-muted)",
-                  marginTop: 22,
-                  lineHeight: 1.5,
+                  marginTop: 12,
+                  paddingBottom: 12,
                 }}
               >
-                Select{" "}
-                <strong style={{ color: "var(--text-primary)" }}>Fill</strong>{" "}
-                to queue for any lane, leave both empty to skip, or pick both
-                Primary and Secondary.
-              </p>
-            </div>
-          )}
-
-          <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 12,
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    marginBottom: 2,
-                  }}
-                >
-                  Auto Champion Select
-                </div>
-                <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
-                  Automatically bans &amp; picks when it&apos;s your turn using
-                  the preferences above.
-                </div>
+                Automatically accepts the match when a ready check appears, so
+                you never miss a match.
               </div>
               <div
+                className={`auto-accept-select ${autoAccept ? "enabled" : "disabled"}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  cursor: "pointer",
-                  padding: "8px 14px",
-                  background: autoChampSelect
+                  justifyContent: "space-between",
+                  padding: "12px 16px",
+                  background: autoAccept
                     ? "rgba(39,174,96,0.08)"
                     : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${autoChampSelect ? "rgba(39,174,96,0.3)" : "var(--blue-border)"}`,
+                  border: `1px solid ${autoAccept ? "rgba(39,174,96,0.3)" : "var(--blue-border)"}`,
                   borderRadius: 3,
+                  marginBottom: 16,
+                  cursor: "pointer",
                   transition: "all 0.2s",
                 }}
                 onClick={() =>
-                  setAutoChampSelect((p) => {
+                  setAutoAccept((p) => {
                     addLog(
-                      !p
-                        ? "Auto champ-select ENABLED"
-                        : "Auto champ-select DISABLED",
+                      !p ? "Auto-accept ENABLED" : "Auto-accept DISABLED",
                       !p ? "success" : "warn",
                     );
                     return !p;
@@ -2886,21 +2548,21 @@ export default function Dashboard() {
               >
                 <span
                   style={{
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: 600,
-                    color: autoChampSelect ? "#2ecc71" : "var(--text-muted)",
                     textTransform: "uppercase",
                     letterSpacing: "0.08em",
                   }}
                 >
-                  {autoChampSelect ? "Enabled" : "Disabled"}
+                  Auto-Accept
                 </span>
                 <div
+                  className="on-off-container"
                   style={{
                     width: 44,
                     height: 22,
                     borderRadius: 11,
-                    background: autoChampSelect
+                    background: autoAccept
                       ? "var(--green)"
                       : "rgba(255,255,255,0.1)",
                     border: "1px solid rgba(255,255,255,0.15)",
@@ -2909,10 +2571,11 @@ export default function Dashboard() {
                   }}
                 >
                   <div
+                    className="on-off-circle"
                     style={{
                       position: "absolute",
                       top: 3,
-                      left: autoChampSelect ? 23 : 3,
+                      left: autoAccept ? 23 : 3,
                       width: 14,
                       height: 14,
                       borderRadius: "50%",
@@ -2922,203 +2585,832 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                Accept Delay: {autoAcceptDelay}s
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={10}
+                value={autoAcceptDelay}
+                onChange={(e) => setAutoAcceptDelay(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  accentColor: "var(--gold)",
+                  marginBottom: 16,
+                }}
+              />
+              {readyCheck && (
+                <>
+                  <div className="divider" />
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      background: "rgba(231,76,60,0.1)",
+                      border: "1px solid rgba(231,76,60,0.3)",
+                      borderRadius: 3,
+                      marginBottom: 12,
+                      animation: "pulse-glow 1.5s ease-in-out infinite",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#e74c3c",
+                        marginBottom: 4,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      <Swords size={13} />
+                      Match Found!
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      Timer: {Math.round(readyCheck.timer)}s · Response:{" "}
+                      {readyCheck.playerResponse}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="btn-gold btn-icon"
+                      onClick={handleAcceptNow}
+                      disabled={loading.accept}
+                      style={{ flex: 1 }}
+                    >
+                      {loading.accept ? (
+                        <span className="spinner" />
+                      ) : (
+                        <>
+                          <Check size={14} strokeWidth={2.5} />
+                          Accept
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="btn-danger btn-icon"
+                      onClick={handleDecline}
+                      disabled={loading.decline}
+                    >
+                      {loading.decline ? (
+                        <span className="spinner" />
+                      ) : (
+                        <>
+                          <X size={14} strokeWidth={2.5} />
+                          Decline
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+              {autoAccept && !readyCheck && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--text-muted)",
+                    textAlign: "center",
+                    padding: "8px 0",
+                  }}
+                >
+                  <span className="spinner" style={{ marginRight: 8 }} />
+                  Watching for match popup…
+                </div>
+              )}
             </div>
           </div>
-        </>
-      )}
 
-      <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-            }}
-          >
-            Current State:
-          </span>
-          {[
-            { label: "In Lobby", active: phase === "Lobby" },
-            { label: "In Queue", active: phase === "Matchmaking" },
-            { label: "Ready Check", active: phase === "ReadyCheck" },
-            { label: "Champ Select", active: phase === "ChampSelect" },
-            { label: "In Game", active: phase === "InProgress" },
-          ].map(({ label, active }) => (
-            <span
-              key={label}
-              style={{
-                fontSize: 12,
-                padding: "3px 10px",
-                borderRadius: 2,
-                border: `1px solid ${active ? phaseColor : "var(--blue-border)"}`,
-                color: active ? phaseColor : "var(--text-muted)",
-                background: active ? `${phaseColor}18` : "transparent",
-                fontWeight: active ? 600 : 400,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                transition: "all 0.3s",
-              }}
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
+          {(showBanPrefs || showPickPrefs) && (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    showBanPrefs && showPickPrefs ? "1fr 1fr" : "1fr",
+                  gap: 16,
+                  marginBottom: 16,
+                }}
+              >
+                {showBanPrefs && (
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: 14,
+                          color: "var(--gold)",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        Ban Preferences
+                      </h3>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                        }}
+                      >
+                        In Order
+                      </span>
+                    </div>
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} style={{ marginBottom: 8 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: "50%",
+                              background:
+                                banPicks[i] !== null
+                                  ? "rgba(192,57,43,0.3)"
+                                  : "rgba(255,255,255,0.05)",
+                              border: `1px solid ${banPicks[i] !== null ? "rgba(192,57,43,0.5)" : "var(--blue-border)"}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              color:
+                                banPicks[i] !== null
+                                  ? "#e74c3c"
+                                  : "var(--text-muted)",
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {i + 1}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 14,
+                              color: "var(--text-muted)",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                            }}
+                          >
+                            {i === 0
+                              ? "First Ban"
+                              : i === 1
+                                ? "Second Ban"
+                                : "Third Ban"}
+                          </span>
+                        </div>
+                        <ChampionSearch
+                          value={banPicks[i]}
+                          onChange={(id, name) => {
+                            setBanPicks((p) => {
+                              const n = [...p];
+                              n[i] = id;
+                              return n;
+                            });
+                            setBanNames((p) => {
+                              const n = [...p];
+                              n[i] = name;
+                              return n;
+                            });
+                          }}
+                          placeholder={`Ban ${i + 1} — type champion name…`}
+                          champions={champions}
+                          excludeIds={allBanIds.filter(
+                            (id, idx) => idx !== i && id !== -1,
+                          )}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {showPickPrefs && (
+                  <div className="panel" style={{ padding: 20 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: 14,
+                          color: "var(--gold)",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        Pick Preferences
+                      </h3>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                        }}
+                      >
+                        In Order
+                      </span>
+                    </div>
 
-      <div className="panel" style={{ padding: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <h3
-            style={{
-              fontSize: 13,
-              color: "var(--gold)",
-              letterSpacing: "0.1em",
-            }}
-          >
-            Activity Log
-          </h3>
-          <button
-            className="btn-clear"
-            onClick={() => {
-              logIdRef.current = 0;
-              setLogs([]);
-            }}
-          >
-            Clear
-          </button>
-        </div>
-        <div
-          className="activity-log-scroll"
-          style={{
-            maxHeight: 180,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 0,
-          }}
-        >
-          {logs.length === 0 && (
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} style={{ marginBottom: 8 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: "50%",
+                              background:
+                                champPicks[i] !== null
+                                  ? "rgba(39,174,96,0.2)"
+                                  : "rgba(255,255,255,0.05)",
+                              border: `1px solid ${champPicks[i] !== null ? "rgba(39,174,96,0.5)" : "var(--blue-border)"}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              color:
+                                champPicks[i] !== null
+                                  ? "#2ecc71"
+                                  : "var(--text-muted)",
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {i + 1}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 14,
+                              color: "var(--text-muted)",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                            }}
+                          >
+                            {i === 0
+                              ? "Main Pick"
+                              : i === 1
+                                ? "Second Pick"
+                                : "Third Pick"}
+                          </span>
+                        </div>
+                        <ChampionSearch
+                          value={champPicks[i]}
+                          onChange={(id, name) => {
+                            setChampPicks((p) => {
+                              const n = [...p];
+                              n[i] = id;
+                              return n;
+                            });
+                            setChampNames((p) => {
+                              const n = [...p];
+                              n[i] = name;
+                              return n;
+                            });
+                          }}
+                          placeholder={`Pick ${i + 1} — type champion name…`}
+                          champions={champions}
+                          excludeIds={allPickIds.filter(
+                            (id, idx) => idx !== i && id !== -1,
+                          )}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {showLanePrefs && (
+                <div
+                  className="panel"
+                  style={{ padding: 20, marginBottom: 16 }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: 14,
+                        color: "var(--gold)",
+                        letterSpacing: "0.1em",
+                      }}
+                    >
+                      Lane Preferences
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: 14,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      Primary · Secondary
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      justifyContent: "center",
+                      marginTop: 22,
+                    }}
+                  >
+                    {LANES.map((lane) => {
+                      const isPrimary = lane1 === lane,
+                        isSecondary = lane2 === lane;
+                      return (
+                        <button
+                          key={lane}
+                          className={`btn-clear ${isSecondary ? "btn-secondary" : ""}`}
+                          onClick={() => {
+                            if (isPrimary) {
+                              setLane1(null);
+                              setLane2(null);
+                            } else if (isSecondary) {
+                              setLane2(null);
+                            } else if (!lane1) {
+                              setLane1(lane);
+                            } else if (
+                              !lane2 &&
+                              lane !== lane1 &&
+                              lane1 !== "Fill"
+                            ) {
+                              setLane2(lane);
+                            }
+                          }}
+                          style={{
+                            background: isPrimary
+                              ? "linear-gradient(180deg,#c89b3c 0%,#785a28 100%)"
+                              : isSecondary
+                                ? "rgba(10,200,185,0.15)"
+                                : "rgba(255,255,255,0.04)",
+                            border: isPrimary
+                              ? "1px solid var(--gold)"
+                              : isSecondary
+                                ? "1px solid rgba(10,200,185,0.5)"
+                                : "1px solid var(--blue-border)",
+                            borderRadius: 3,
+                            padding: "10px 18px",
+                            color: isPrimary
+                              ? "var(--blue-dark)"
+                              : isSecondary
+                                ? "var(--blue-glow)"
+                                : "var(--text-muted)",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            maxWidth: 120,
+                            width: "100%",
+                            gap: 6,
+                          }}
+                        >
+                          {lane}
+                          {isPrimary && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                background: "rgba(0,0,0,0.25)",
+                                borderRadius: 2,
+                                padding: "1px 5px",
+                              }}
+                            >
+                              1st
+                            </span>
+                          )}
+                          {isSecondary && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                background: "rgba(10,200,185,0.2)",
+                                borderRadius: 2,
+                                padding: "1px 5px",
+                              }}
+                            >
+                              2nd
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(lane1 || lane2) && (
+                    <div
+                      style={{
+                        marginTop: 24,
+                        fontSize: 12,
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      {lane1 && (
+                        <span
+                          style={{
+                            color: "var(--gold)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          Primary: <strong>{lane1}</strong>
+                        </span>
+                      )}
+                      {lane2 && (
+                        <span
+                          style={{
+                            color: "var(--blue-glow)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          Secondary: <strong>{lane2}</strong>
+                        </span>
+                      )}
+                      <button
+                        className="btn-clear"
+                        onClick={() => {
+                          setLane1(null);
+                          setLane2(null);
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: "var(--text-muted)",
+                      marginTop: 22,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Select{" "}
+                    <strong style={{ color: "var(--text-primary)" }}>
+                      Fill
+                    </strong>{" "}
+                    to queue for any lane, leave both empty to skip, or pick
+                    both Primary and Secondary.
+                  </p>
+                </div>
+              )}
+
+              <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div>
+                      <h3
+                        style={{
+                          fontSize: 14,
+                          color: "var(--gold)",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        Auto Champion Select
+                      </h3>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: "var(--text-muted)",
+                        marginTop: 12,
+                      }}
+                    >
+                      Automatically bans &amp; picks when it&apos;s your turn
+                      using the preferences above.
+                    </div>
+                  </div>
+                  <div
+                    className={`auto-accept-select ${autoChampSelect ? "enabled" : "disabled"}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      cursor: "pointer",
+                      padding: "8px 14px",
+                      background: autoChampSelect
+                        ? "rgba(39,174,96,0.08)"
+                        : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${autoChampSelect ? "rgba(39,174,96,0.3)" : "var(--blue-border)"}`,
+                      borderRadius: 3,
+                      transition: "all 0.2s",
+                    }}
+                    onClick={() =>
+                      setAutoChampSelect((p) => {
+                        addLog(
+                          !p
+                            ? "Auto champ-select ENABLED"
+                            : "Auto champ-select DISABLED",
+                          !p ? "success" : "warn",
+                        );
+                        return !p;
+                      })
+                    }
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: autoChampSelect
+                          ? "#2ecc71"
+                          : "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      {autoChampSelect ? "Enabled" : "Disabled"}
+                    </span>
+                    <div
+                      className="on-off-container"
+                      style={{
+                        width: 44,
+                        height: 22,
+                        borderRadius: 11,
+                        background: autoChampSelect
+                          ? "var(--green)"
+                          : "rgba(255,255,255,0.1)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        position: "relative",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 3,
+                          left: autoChampSelect ? 23 : 3,
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: "white",
+                          transition: "left 0.2s",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
             <div
               style={{
-                color: "var(--text-muted)",
-                fontSize: 12,
-                padding: "8px 0",
-                fontStyle: "italic",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
               }}
             >
-              {connectedRef.current
-                ? "Log cleared."
-                : "No activity yet. Connect to the League client to begin."}
-            </div>
-          )}
-          {logs.map((l) => (
-            <div key={l.id} className={`log-entry ${l.type}`}>
-              <span style={{ color: "var(--blue-border)", marginRight: 8 }}>
-                {l.time}
+              <span
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                }}
+              >
+                Current State:
               </span>
-              {l.message}
+              {[
+                { label: "In Lobby", active: phase === "Lobby" },
+                { label: "In Queue", active: phase === "Matchmaking" },
+                { label: "Ready Check", active: phase === "ReadyCheck" },
+                { label: "Champ Select", active: phase === "ChampSelect" },
+                { label: "In Game", active: phase === "InProgress" },
+              ].map(({ label, active }) => (
+                <span
+                  key={label}
+                  className="state"
+                  style={{
+                    fontSize: 12,
+                    padding: "3px 10px",
+                    borderRadius: 2,
+                    border: `1px solid ${active ? phaseColor : "var(--blue-border)"}`,
+                    color: active ? phaseColor : "var(--text-muted)",
+                    background: active ? `${phaseColor}18` : "transparent",
+                    fontWeight: active ? 600 : 400,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-      <footer className="footer">
-        <div className="footer-wrapper">
-          <a
-            href="https://github.com/BenoitTrem/lol-client-dashboard.git"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="footer-link"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.2 11.38.6.1.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.54-1.39-1.33-1.76-1.33-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.67-.31-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.31-.54-1.56.12-3.25 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.69.25 2.94.12 3.25.77.84 1.24 1.91 1.24 3.23 0 4.63-2.8 5.64-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57C20.57 22.3 24 17.8 24 12.5 24 5.87 18.63.5 12 .5z" />
-            </svg>
-            GitHub Repository
-          </a>
-
-          <div className="footer-link-text">
-            This project is open-source. You are free to use, modify, and build
-            on top of it.
           </div>
-        </div>
 
-        <div style={{ maxWidth: 900, margin: "42px auto 0" }}>
-          © {new Date().getFullYear()} LoL Dashboard.
-        </div>
+          <div className="panel" style={{ padding: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: 13,
+                  color: "var(--gold)",
+                  letterSpacing: "0.1em",
+                }}
+              >
+                Activity Log
+              </h3>
+              <button
+                className="btn-clear"
+                onClick={() => {
+                  logIdRef.current = 0;
+                  setLogs([]);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            <div
+              className="activity-log-scroll"
+              style={{
+                maxHeight: 180,
+                overflowY: "auto",
+                overflowX: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                gap: 0,
+              }}
+            >
+              {logs.length === 0 && (
+                <div
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    padding: "8px 0",
+                    fontStyle: "italic",
+                  }}
+                >
+                  {connectedRef.current
+                    ? "Log cleared."
+                    : "No activity yet. Connect to the League client to begin."}
+                </div>
+              )}
+              {logs.map((l) => (
+                <div key={l.id} className={`log-entry ${l.type}`}>
+                  <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>
+                    {l.time} -
+                  </span>
+                  {l.message}
+                </div>
+              ))}
+            </div>
+          </div>
 
-        <div style={{ maxWidth: 900, margin: "8px auto 0" }}>
-          LoL Dashboard is an independent fan project and is not affiliated with
-          or endorsed by Riot Games. League of Legends is a trademark of Riot
-          Games, Inc.
-        </div>
-      </footer>
+          <footer className="footer">
+            <div className="footer-wrapper">
+              <a
+                href="https://github.com/BenoitTrem/lol-client-dashboard.git"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-link"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.2 11.38.6.1.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.54-1.39-1.33-1.76-1.33-1.76-1.09-.75.08-.74.08-.74 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.67-.31-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.31-.54-1.56.12-3.25 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.69.25 2.94.12 3.25.77.84 1.24 1.91 1.24 3.23 0 4.63-2.8 5.64-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57C20.57 22.3 24 17.8 24 12.5 24 5.87 18.63.5 12 .5z" />
+                </svg>
+                GitHub Repository
+              </a>
 
-      {toast && (
-        <div
-          style={{
-            position: "sticky",
-            bottom: 50,
-            left: 0,
-            right: 0,
-            marginTop: 16,
-            background:
-              toast.type === "error"
-                ? "rgba(192,57,43,0.95)"
-                : "rgba(180,130,20,0.95)",
-            border: `1px solid ${toast.type === "error" ? "rgba(231,76,60,0.6)" : "rgba(200,155,60,0.6)"}`,
-            borderRadius: 4,
-            padding: "16px 24px",
-            fontSize: 17,
-            fontWeight: 600,
-            color: "#fff",
-            letterSpacing: "0.05em",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
-            zIndex: 999,
-            width: "100%",
-            boxSizing: "border-box",
-          }}
-        >
-          {toast.type === "error" ? (
-            <AlertCircle size={22} strokeWidth={2} />
-          ) : (
-            <AlertTriangle size={22} strokeWidth={2} />
+              <div className="footer-link-text">
+                This project is open-source. You are free to use, modify, and
+                build on top of it.
+              </div>
+            </div>
+
+            <div style={{ maxWidth: 900, margin: "42px auto 0" }}>
+              © {new Date().getFullYear()} LoL Client Dashboard.
+            </div>
+
+            <div style={{ maxWidth: 900, margin: "8px auto 0" }}>
+              LoL Client Dashboard is an independent fan project and is not
+              affiliated with or endorsed by Riot Games. League of Legends is a
+              trademark of Riot Games, Inc.
+            </div>
+          </footer>
+
+          {toast && (
+            <div
+              style={{
+                position: "sticky",
+                bottom: 50,
+                left: 0,
+                right: 0,
+                marginTop: 16,
+                background:
+                  toast.type === "error"
+                    ? "rgba(192,57,43,0.95)"
+                    : "rgba(180,130,20,0.95)",
+                border: `1px solid ${toast.type === "error" ? "rgba(231,76,60,0.6)" : "rgba(200,155,60,0.6)"}`,
+                borderRadius: 4,
+                padding: "16px 24px",
+                fontSize: 17,
+                fontWeight: 600,
+                color: "#fff",
+                letterSpacing: "0.05em",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+                zIndex: 999,
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            >
+              {toast.type === "error" ? (
+                <AlertCircle size={22} strokeWidth={2} />
+              ) : (
+                <AlertTriangle size={22} strokeWidth={2} />
+              )}
+              {toast.message}
+              <button
+                onClick={() => setToast(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(255,255,255,0.7)",
+                  cursor: "pointer",
+                  marginLeft: "auto",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  textTransform: "none",
+                  letterSpacing: 0,
+                }}
+              >
+                <X size={18} strokeWidth={2} />
+              </button>
+            </div>
           )}
-          {toast.message}
-          <button
-            onClick={() => setToast(null)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "rgba(255,255,255,0.7)",
-              cursor: "pointer",
-              marginLeft: "auto",
-              padding: 0,
-              display: "flex",
-              alignItems: "center",
-              textTransform: "none",
-              letterSpacing: 0,
-            }}
-          >
-            <X size={18} strokeWidth={2} />
-          </button>
-        </div>
+        </>
       )}
     </div>
   );
