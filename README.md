@@ -25,7 +25,7 @@ A fan-made open-source desktop application for interacting with the League of Le
 
 > Downloads the **installer** (`.exe`) — no coding required, just run and play.
 
-<a href="https://github.com/BenoitTrem/lol-client-dashboard/releases/download/v1.1.0/LoL.Dashboard.Setup.1.1.0.exe">
+<a href="https://github.com/BenoitTrem/lol-client-dashboard/releases/download/V1.1.0/LoL.Dashboard.Setup.1.1.0.exe">
   <img src="https://img.shields.io/badge/Download%20for%20Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows"/>
 </a>
 
